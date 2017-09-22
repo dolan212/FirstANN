@@ -16,8 +16,8 @@ bool TrainingDataReader::readData()
 {
 
     struct Range {
-        double start;
-        double end;
+        float start;
+        float end;
     };
     assert(!filename.empty());
     std::cout << "Reading data..." << std::endl;
@@ -65,15 +65,15 @@ bool TrainingDataReader::readData()
         {
             std::vector<std::string> data = line | ',';
 
-            std::vector<double> outputs;
-            std::vector<double> inputs;
+            std::vector<float> outputs;
+            std::vector<float> inputs;
             for(int i : outputIndices)
                 outputs.push_back(atof(data[i].c_str()));
 
             int rangeIn = 0;
             for(int i : inputIndices)
             {
-                double val = atof(data[i].c_str());
+                float val = atof(data[i].c_str());
                 Range r = inRanges[rangeIn];
                 val = (val - r.start) / (r.end - r.start);
                 inputs.push_back(val);
@@ -102,7 +102,6 @@ void TrainingDataReader::createTrainingData()
 {
 	assert(!entries.empty());
     std::cout << "Creating training data..." << std::endl;
-
 	std::random_shuffle(entries.begin(), entries.end());
 
 	int numEntries = entries.size();

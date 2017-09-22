@@ -3,13 +3,11 @@
 
 #include "network.h"
 #include <vector>
-#include <iostream>
-
 
 struct TrainingEntry
 {
-    std::vector<double> inputs;
-    std::vector<double> expectedOut;
+    std::vector<float> inputs;
+    std::vector<float> expectedOut;
 };
 
 typedef std::vector<TrainingEntry> TrainingSet;
@@ -24,45 +22,43 @@ struct TrainingData
 class NetworkTrainer
 {
 public:
-    struct Settings
+    struct TrainerSettings
     {
         double learningRate = 0.01;
         double momentum = 0.9;
-        bool batch = false;
 
         int maxEpochs = 150;
         int desiredAccuracy = 90;
     };
 
-    NetworkTrainer(Settings, Network *);//
+    NetworkTrainer(TrainerSettings, Network *);
+    ~NetworkTrainer();
 
     void train(TrainingData);
-
 private:
-    inline double getOutputErrorGradient(double desiredValue, double outputValue) const//
+    inline float getOutputErrorGradient(float desiredValue, float outputValue)
     {
         return outputValue * (1.0 - outputValue) * (desiredValue - outputValue);
     }
 
-    double getHiddenErrorGradient(int hidden);//
+    float getHiddenErrorGradient(int hidden);
 
-    double runEpoch(TrainingSet);//
+    float runEpoch(TrainingSet);
 
-    void backPropagate(std::vector<double>);//
-    void updateWeights();//
+    void backPropagate(std::vector<float>);
+    void updateWeights();
 
     Network* network;
 
-    double learningRate;
-    double momentum;
+    float learningRate;
+    float momentum;
     int desiredAccuracy;
     int maxEpochs;
-    bool useBatchLearning;
 
-    double * deltaIH;
-    double * deltaHO;
-    std::vector<double> errorGradientsHidden;
-    std::vector<double> errorGradientsOutput;
+    float * deltaIH;
+    float * deltaHO;
+    float * errorGradientsHidden;
+    float * errorGradientsOutput;
 
     int currentEpoch;
 };

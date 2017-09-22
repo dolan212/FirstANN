@@ -1,56 +1,53 @@
 #include "network.h"
-#include <assert.h>
-#include <stdlib.h>
-#include <cstring>
 #include <random>
-#include <iostream>
-#include <fstream>
 
-Network::Network(Settings settings) :
-    numInputs(settings.numInputs),
-    numHidden(settings.numHidden),
-    numOutputs(settings.numOutputs),
-    func(settings.func)
+Network::Network(NetworkSettings sett)
 {
-    assert(settings.numInputs > 0 && settings.numOutputs > 0 && settings.numHidden > 0);
-    initNetwork();
+    numInput = sett.numInput;
+    numOutput = sett.numOutput;
+    numHidden = sett.numHidden;
+
+    int totalIn = numInput + 1;
+    int totalHid = numHidden + 1;
+
+    inputs = new float[totalIn];
+    hiddens = new float[totalHid];
+    outputs = new float[numOutput];
+    clampedOutputs = new float[numOutput];
+
+    weightsIH = new float[totalIn * totalHid];
+    weightsHO = new float[totalHid * numOutput];
+
+    for(int i = 0; i < totalIn; i++)
+        inputs[i] = 0;
+
+    for(int h = 0; h < totalHid; h++)
+        hiddens[h] = 0;
+
+    for(int o = 0; o < numOutput; o++)
+    {
+        outputs[o] = 0;
+        clampedOutputs[o] = 0;
+    }
+
+    for(int i = 0; i < totalIn * totalHid; i++)
+        weightsIH[i] = 0;
+
+    for(int i = 0; i < numOutput * totalHid; i++)
+        weightsHO[i] = 0;
+
     initWeights();
-}
-
-void Network::initNetwork()
-{
-    int totalNumInputs = numInputs + 1;
-    int totalNumHidden = numInputs + 1;
-
-    inputNeurons.resize(totalNumInputs);
-    hiddenNeurons.resize(totalNumHidden);
-    outputNeurons.resize(numOutputs);
-    clampedOutputs.resize(numOutputs);
-
-    weightsIH.resize(totalNumInputs * totalNumHidden);
-    weightsHO.resize(totalNumHidden * numOutputs);
-
-    memset(inputNeurons.data(), 0, inputNeurons.size() * sizeof(double));
-    memset(hiddenNeurons.data(), 0, hiddenNeurons.size() * sizeof(double));
-    memset(outputNeurons.data(), 0, outputNeurons.size() * sizeof(double));
-    memset(clampedOutputs.data(), 0, clampedOutputs.size() * sizeof(double));
-
-    inputNeurons.back() = -1.0;
-    hiddenNeurons.back() = -1.0;
-
-    memset(weightsIH.data(), 0, weightsIH.size() * sizeof(double));
-    memset(weightsHO.data(), 0, weightsHO.size() * sizeof(double));
 }
 
 void Network::initWeights()
 {
-    double minWeight = -0.5;
-    double maxWeight = 0.5;
+    float minWeight = -0.5;
+    float maxWeight = 0.5;
 
-    std::uniform_real_distribution<double> unif(minWeight, maxWeight);
+    std::uniform_real_distribution<float> unif(minWeight, maxWeight);
     std::default_random_engine re;
 
-    for(int i = 0; i <= numInputs; i++)
+    for(int i = 0; i <= numInput; i++)
     {
         for(int h = 0; h <= numHidden; h++)
         {
@@ -61,7 +58,7 @@ void Network::initWeights()
 
     for(int h = 0; h <= numHidden; h++)
     {
-        for(int o = 0; o < numOutputs; o++)
+        for(int o = 0; o < numOutput; o++)
         {
             int index = getHOIndex(h, o);
             weightsHO[index] = unif(re);
@@ -69,162 +66,45 @@ void Network::initWeights()
     }
 }
 
-std::vector<double> Network::evaluate(std::vector<double> inputs)
+void Network::evaluate(float input[])
 {
-    if(inputs.size() != numInputs)
+    for(int i = 0; i < numInput; i++)
     {
-        std::cout << "Error: Invalid number of inputs! (" << inputs.size() << " != " << numInputs << ")" << std::endl;
-        std::vector<double> tmp;
-        for(int i = 0; i < numOutputs; i++)
-            tmp.push_back(0);
-        return tmp;
-    }
-
-    for(int i = 0; i < numInputs; i++)
-    {
-        inputNeurons[i] = inputs[i];
+        inputs[i] = input[i];
     }
 
     for(int h = 0; h < numHidden; h++)
     {
-        double weightedSum = 0;
-        for(int i = 0; i <= numInputs; i++)
+        float weightedSum = 0;
+        for(int i = 0; i <= numInput; i++)
         {
             int index = getIHIndex(i, h);
-            weightedSum += weightsIH[index] * inputNeurons[i];
+            weightedSum += weightsIH[index] * inputs[i];
         }
-
-        double d;
-        switch(func)
-        {
-            case Sigmoid:
-                d = sigmoidActivationFunction(weightedSum);
-                break;
-            case Linear:
-                d = linearActivationFunction(weightedSum);
-                break;
-            case Step:
-                d = stepActivationFunction(weightedSum);
-                break;
-        }
-
-        hiddenNeurons[h] = d;
+        hiddens[h] = sigmoid(weightedSum);
     }
 
-    for(int o = 0; o < numOutputs; o++)
+    for(int o = 0; o < numOutput; o++)
     {
-        double weightedSum = 0;
+        float weightedSum = 0;
         for(int h = 0; h <= numHidden; h++)
         {
             int index = getHOIndex(h, o);
-            weightedSum += weightsHO[index] * hiddenNeurons[h];
+            weightedSum += weightsHO[index] * hiddens[h];
         }
-
-        double d;
-        switch(func)
-        {
-            case Sigmoid:
-                d = sigmoidActivationFunction(weightedSum);
-                break;
-            case Linear:
-                d = linearActivationFunction(weightedSum);
-                break;
-            case Step:
-                d = stepActivationFunction(weightedSum);
-                break;
-        }
-
-        outputNeurons[o] = d;
-
-        if(func == Sigmoid || func == Step)
-        {
-            if(d >= 0.5) clampedOutputs[o] = 1;
-            else clampedOutputs[o] = 0;
-        }
-        else if(func == Linear)
-        {
-            clampedOutputs[o] = (int)d;
-        }
-    }
-
-    return clampedOutputs;
-}
-
-void Network::saveModel(std::string filename)
-{
-    std::ofstream file(filename);
-    if(file.is_open())
-    {
-        file << numInputs << " " << numHidden << " " << numOutputs << "\n";
-        for(int i = 0; i <= numInputs; i++)
-        {
-            for(int h = 0; h <= numHidden; h++)
-            {
-                int index = getIHIndex(i, h);
-                file << weightsIH[index] << " ";
-            }
-            file << "\n";
-        }
-
-        for(int h = 0; h <= numHidden; h++)
-        {
-            for(int o = 0; o < numOutputs; o++)
-            {
-                int index = getHOIndex(h, o);
-                file << weightsHO[index] << " ";
-            }
-            file << "\n";
-        }
-        file.close();
-    }
-    else
-    {
-        std::cout << "Error opening file \"" << filename << "\"" << std::endl;
+        outputs[o] = sigmoid(weightedSum);
+        if(outputs[o] >= 0.5) clampedOutputs[o] = 1;
+        else clampedOutputs[o] = 0;
     }
 }
 
-Network* Network::loadModel(std::string filename)
+
+Network::~Network()
 {
-    Network * net;
-    std::ifstream file(filename);
+    delete [] inputs;
+    delete [] outputs;
+    delete [] hiddens;
 
-    if(file.is_open())
-    {
-        std::string tmp;
-        file >> tmp;
-        net->numInputs = atoi(tmp.c_str());
-        file >> tmp;
-        net->numHidden = atoi(tmp.c_str());
-        file >> tmp;
-        net->numOutputs = atoi(tmp.c_str());
-
-        net->initNetwork();
-
-        for(int i = 0; i <= net->numInputs; i++)
-        {
-            for(int h = 0; h <= net->numHidden; h++)
-            {
-                file >> tmp;
-                int index = net->getIHIndex(i, h);
-                net->weightsIH[index] = atof(tmp.c_str());
-            }
-        }
-
-        for(int h = 0; h <= net->numHidden; h++)
-        {
-            for(int o = 0; o < net->numOutputs; o++)
-            {
-                file >> tmp;
-                int index = net->getHOIndex(h, o);
-                net->weightsHO[index] = atof(tmp.c_str());
-            }
-        }
-        file.close();
-        return net;
-    }
-    else
-    {
-        std::cout << "Error opening file \"" << filename << "\"" << std::endl;
-        return nullptr;
-    }
+    delete [] weightsIH;
+    delete [] weightsHO;
 }

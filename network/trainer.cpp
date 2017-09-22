@@ -1,134 +1,117 @@
 #include "trainer.h"
-#include <assert.h>
-#include <cstring>
 #include <iostream>
 #include <iomanip>
 
-NetworkTrainer::NetworkTrainer(Settings sett, Network * n) :
-    learningRate(sett.learningRate),
-    momentum(sett.momentum),
-    useBatchLearning(sett.batch),
-    maxEpochs(sett.maxEpochs),
-    desiredAccuracy(sett.desiredAccuracy),
-    network(n),
-    currentEpoch(0)
+NetworkTrainer::NetworkTrainer(TrainerSettings set, Network * net)
 {
-    assert(network != nullptr);
+    network = net;
+    learningRate = set.learningRate;
+    momentum = set.momentum;
 
-    std::cout << "Here?" << std::endl;
+    maxEpochs = set.maxEpochs;
+    desiredAccuracy = set.desiredAccuracy;
 
-    int ih = network->weightsIH.size();
-    int ho = network->weightsHO.size();
-    std::cout << "Maybe Here?" << std::endl;
-    std::cout << ih << std::endl;
-    std::cout << ho << std::endl;
-    deltaIH = new double[ih];
-    std::cout << "Or Here?" << std::endl;
-    deltaHO = new double[ho];
+    deltaIH = new float[(net->numInput + 1) * (net->numHidden + 1)];
+    deltaHO = new float[(net->numHidden + 1) * net->numOutput];
 
-    errorGradientsHidden.resize(network->hiddenNeurons.size());
-    errorGradientsOutput.resize(network->outputNeurons.size());
-
-    memset((void*)deltaIH, 0, ih * sizeof(double));
-    memset((void*)deltaHO, 0, ho * sizeof(double));
-
-    memset(errorGradientsHidden.data(), 0, sizeof(double) * errorGradientsHidden.size());
-    memset(errorGradientsOutput.data(), 0, sizeof(double) * errorGradientsOutput.size());
+    errorGradientsHidden = new float[net->numHidden + 1];
+    errorGradientsOutput = new float[net->numOutput];
+    currentEpoch = 0;
 }
 
-double NetworkTrainer::getHiddenErrorGradient(int hidden)
+NetworkTrainer::~NetworkTrainer()
 {
-    double weightedSum = 0;
-    for(int o = 0; o < network->numOutputs; o++)
+    delete [] deltaIH;
+    delete [] deltaHO;
+    delete [] errorGradientsHidden;
+    delete [] errorGradientsOutput;
+}
+
+float NetworkTrainer::getHiddenErrorGradient(int hidden)
+{
+    float weightedSum = 0;
+    for(int o = 0; o < network->numOutput; o++)
     {
         int index = network->getHOIndex(hidden, o);
         weightedSum += network->weightsHO[index] * errorGradientsOutput[o];
     }
-
-    return network->hiddenNeurons[hidden] * (1 - network->hiddenNeurons[hidden]) * weightedSum;
+    return network->hiddens[hidden] * (1 - network->hiddens[hidden]) * weightedSum;
 }
 
-void NetworkTrainer::backPropagate(std::vector<double> expectedOutputs)
+void NetworkTrainer::backPropagate(std::vector<float> expected)
 {
-    for(int o = 0; o < network->numOutputs; o++)
+    for(int o = 0; o < network->numOutput; o++)
     {
-        errorGradientsOutput[o] = getOutputErrorGradient(expectedOutputs[o], network->outputNeurons[o]);
+        errorGradientsOutput[o] = getOutputErrorGradient(expected[o], network->outputs[o]);
         for(int h = 0; h <= network->numHidden; h++)
         {
             int index = network->getHOIndex(h, o);
 
-            if(useBatchLearning) deltaHO[index] += learningRate * network->hiddenNeurons[h] * errorGradientsOutput[o];
-            else deltaHO[index] = learningRate * network->hiddenNeurons[h] * errorGradientsOutput[o] + momentum * deltaHO[index];
+            deltaHO[index] = learningRate * network->hiddens[h] * errorGradientsOutput[o] + momentum * deltaHO[index];
         }
     }
 
     for(int h = 0; h <= network->numHidden; h++)
     {
         errorGradientsHidden[h] = getHiddenErrorGradient(h);
-        for(int i = 0; i <= network->numInputs; i++)
+        for(int i = 0; i <= network->numInput; i++)
         {
             int index = network->getIHIndex(i, h);
 
-            if(useBatchLearning) deltaIH[index] += learningRate * network->inputNeurons[i] * errorGradientsHidden[h];
-            else deltaIH[index] = learningRate * network->inputNeurons[i] * errorGradientsHidden[h] + momentum * deltaIH[index];
+            deltaIH[index] = learningRate * network->inputs[h] * errorGradientsHidden[h] + momentum * deltaIH[index];
         }
     }
-    if(!useBatchLearning)
-        updateWeights();
+
+    updateWeights();
 }
 
 void NetworkTrainer::updateWeights()
 {
-    for(int i = 0; i <= network->numInputs; i++)
+    for(int i = 0; i <= network->numInput; i++)
     {
         for(int h = 0; h <= network->numHidden; h++)
         {
             int index = network->getIHIndex(i, h);
             network->weightsIH[index] += deltaIH[index];
-            if(useBatchLearning)
-                deltaHO[index] = 0;
         }
     }
 
     for(int h = 0; h <= network->numHidden; h++)
     {
-        for(int o = 0; o < network->numOutputs; o++)
+        for(int o = 0; o < network->numOutput; o++)
         {
             int index = network->getHOIndex(h, o);
             network->weightsHO[index] += deltaHO[index];
-            if(useBatchLearning)
-                deltaHO[index] = 0;
         }
     }
 }
 
-double NetworkTrainer::runEpoch(TrainingSet trainingSet)
+float NetworkTrainer::runEpoch(TrainingSet trainingSet)
 {
-    double accuracy = 0;
+    float accuracy = 0;
     for(TrainingEntry entry : trainingSet)
     {
-        std::vector<double> out = network->evaluate(entry.inputs);
+        float inputs[entry.inputs.size()];
+        for(int i = 0; i < entry.inputs.size(); i++)
+            inputs[i] = entry.inputs[i];
+        network->evaluate(inputs);
         backPropagate(entry.expectedOut);
 
-        //std::cout << out[0] << '\r' << std::flush;
-
         bool correct = true;
-        for(int o = 0; o < network->numOutputs; o++)
+        for(int o = 0; o < network->numOutput; o++)
         {
-            if(out[o] != entry.expectedOut[o])
+            if(network->clampedOutputs[o] != entry.expectedOut[o])
             {
                 correct = false;
                 break;
             }
         }
 
-        if(correct) accuracy++;
+        if(correct)
+            accuracy++;
     }
 
-    if(useBatchLearning)
-        updateWeights();
-
-    accuracy = (accuracy / (double)trainingSet.size()) * 100;
+    accuracy = (accuracy / (float)trainingSet.size()) * 100;
 
     return accuracy;
 }
@@ -143,11 +126,11 @@ void NetworkTrainer::train(TrainingData data)
     std::cout << "|" << std::setw(10) << "maxEpochs = " << maxEpochs << std::setw(10) << "|" << std::endl;
     std::cout << "==============================" << std::endl;
 
-    double trainingAccuracy = 0;
+    float trainingAccuracy = 0;
     while(currentEpoch < maxEpochs && trainingAccuracy < desiredAccuracy)
     {
         trainingAccuracy = runEpoch(data.trainingSet);
-        double genAccuracy = runEpoch(data.generalizationSet);
+        float genAccuracy = runEpoch(data.generalizationSet);
 
         std::cout << "Epoch: " << currentEpoch
                   << " | Training Set Accuracy: " << trainingAccuracy
@@ -161,15 +144,18 @@ void NetworkTrainer::train(TrainingData data)
     std::cout << "|    Training Complete    |" << std::endl;
     std::cout << "===========================" << std::endl;
 
-    double valAccuracy = 0;
+    float valAccuracy = 0;
     for(TrainingEntry entry : data.validationSet)
     {
-        std::vector<double> out = network->evaluate(entry.inputs);
+        float inputs[entry.inputs.size()];
+        for(int i = 0; i < entry.inputs.size(); i++)
+            inputs[i] = entry.inputs[i];
+        network->evaluate(inputs);
 
         bool correct = true;
-        for(int o = 0; o < network->numOutputs; o++)
+        for(int o = 0; o < network->numOutput; o++)
         {
-            if(out[o] != entry.expectedOut[o])
+            if(network->clampedOutputs[o] != entry.expectedOut[o])
             {
                 correct = false;
                 break;
@@ -179,7 +165,7 @@ void NetworkTrainer::train(TrainingData data)
         if(correct) valAccuracy++;
     }
 
-    valAccuracy  = (valAccuracy / (double)data.validationSet.size()) * 100;
+    valAccuracy  = (valAccuracy / (float)data.validationSet.size()) * 100;
 
     std::cout << "Validation Set Accuracy: " << valAccuracy << std::endl;
 }

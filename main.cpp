@@ -18,24 +18,18 @@ int main()
     int numIn = reader.getNumInputs();
     int numOut = reader.getNumOutputs();
 
-    Network::Settings netSettings;
-    netSettings.numInputs = numIn;
+    Network::NetworkSettings netSettings;
+    netSettings.numInput = numIn;
     netSettings.numHidden = numHidden;
-    netSettings.numOutputs = numOut;
-    netSettings.func = Sigmoid;
+    netSettings.numOutput = numOut;
 
     Network * net = new Network(netSettings);
 
-    NetworkTrainer::Settings trainerSettings;
+    NetworkTrainer::TrainerSettings trainerSettings;
     trainerSettings.learningRate = 0.9;
-    trainerSettings.maxEpochs = 2000;
+    trainerSettings.maxEpochs = 200;
     NetworkTrainer trainer(trainerSettings, net);
 
     trainer.train(reader.getTrainingData());
-
-    cout << "Enter filename to save model: ";
-    cin >> filename;
-
-    net->saveModel(filename);
-
+    delete net;
 }

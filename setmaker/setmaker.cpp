@@ -44,7 +44,7 @@ int main(int argc, char* argv[])
 
         vector<string> r = removeS | ',';
         vector<int> remove;
-        if(removeS != "")
+        if(removeS != "-1")
         {
             for(string s : r)
             {
